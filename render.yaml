@@ -1,0 +1,33 @@
+# Блюпринт Render: https://render.com/docs/blueprint-spec
+#
+# Секретов в файле нет: ключ модерации Render генерирует сам и хранит у себя,
+# поэтому он переживает передеплой и не попадает в репозиторий.
+#
+# Важно: у бесплатного плана диск непостоянный — файлы из data/ исчезают
+# при каждом деплое и перезапуске. Чтобы истории и фото сохранялись,
+# подключите Persistent Disk (платный план) с точкой монтирования /var/data
+# и раскомментируйте блок disk + NEFT_DATA_DIR ниже.
+
+services:
+  - type: web
+    name: neft-stories
+    runtime: python
+    plan: free
+    buildCommand: echo "зависимостей нет — только стандартная библиотека Python"
+    startCommand: python server.py
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.10"
+      # Ключ модерации: генерируется Render и сохраняется между деплоями.
+      # Ссылка на страницу модерации: https://<домен>/moderation?key=<значение>
+      - key: NEFT_MODERATION_KEY
+        generateValue: true
+      # Ключ не печатать в логи хостинга
+      - key: NEFT_HIDE_MODERATION_KEY
+        value: "1"
+      # - key: NEFT_DATA_DIR
+      #   value: /var/data
+    # disk:
+    #   name: neft-data
+    #   mountPath: /var/data
+    #   sizeGB: 1

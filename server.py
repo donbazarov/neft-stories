@@ -37,7 +37,10 @@ from urllib.parse import parse_qs, unquote, urlparse
 
 ROOT = Path(__file__).resolve().parent
 PUBLIC_DIR = ROOT / "public"
-DATA_DIR = ROOT / "data"
+
+# Каталог с данными можно вынести на постоянный диск хостинга:
+#   NEFT_DATA_DIR=/var/data python server.py
+DATA_DIR = Path(os.environ.get("NEFT_DATA_DIR") or (ROOT / "data")).expanduser().resolve()
 UPLOADS_DIR = DATA_DIR / "uploads"
 DB_FILE = DATA_DIR / "db.json"
 
@@ -436,7 +439,10 @@ class NeftHandler(BaseHTTPRequestHandler):
     # ------------------------------- логирование --------------------------- #
 
     def log_message(self, fmt: str, *args) -> None:
-        sys.stderr.write("[%s] %s\n" % (self.log_date_time_string(), fmt % args))
+        # Ключ модерации передаётся в query-строке, поэтому не пишем его в лог:
+        # логи хостинга (Render и т.п.) видны всем, у кого есть доступ к панели.
+        message = re.sub(r"(key=)[^&\s\"]+", r"\1<скрыт>", fmt % args)
+        sys.stderr.write("[%s] %s\n" % (self.log_date_time_string(), message))
 
 
 # --------------------------------------------------------------------------- #
@@ -457,11 +463,20 @@ def main() -> None:
     server = ThreadingHTTPServer((args.host, args.port), NeftHandler)
     host_label = "localhost" if args.host in ("0.0.0.0", "::") else args.host
 
+    # На публичном хостинге логи видны в панели, поэтому ключ можно скрыть:
+    #   NEFT_HIDE_MODERATION_KEY=1
+    hide_key = os.environ.get("NEFT_HIDE_MODERATION_KEY", "").lower() in ("1", "true", "yes")
+    moderation_url = f"http://{host_label}:{args.port}/moderation"
+    moderation_url += "?key=<скрыт, см. NEFT_MODERATION_KEY>" if hide_key else f"?key={key}"
+
     print("=" * 68)
     print("  НЕФТЬ · Истории гостей — сервер запущен")
     print("=" * 68)
     print(f"  Главная страница : http://{host_label}:{args.port}/")
-    print(f"  Модерация        : http://{host_label}:{args.port}/moderation?key={key}")
+    print(f"  Модерация        : {moderation_url}")
+    print(f"  Каталог данных   : {DATA_DIR}")
+    if MODERATION_KEY:
+        print("  Ключ модерации   : взят из переменной окружения NEFT_MODERATION_KEY")
     print()
     print("  Ссылку на модерацию не показываем посетителям — это тайный URL.")
     print("  Остановить сервер: Ctrl+C")
