@@ -1,0 +1,151 @@
+/* =========================================================================
+   НЕФТЬ · Панель модерации
+   ========================================================================= */
+
+body.moderation-page {
+  background:
+    radial-gradient(90% 60% at 15% 0%, rgba(90, 70, 200, 0.16), transparent 60%),
+    radial-gradient(80% 60% at 90% 10%, rgba(0, 170, 160, 0.13), transparent 60%),
+    radial-gradient(90% 70% at 50% 100%, rgba(232, 178, 95, 0.10), transparent 65%),
+    var(--bg);
+}
+
+.mod-stage {
+  position: relative;
+  z-index: 2;
+  flex: 1;
+  width: 100%;
+  max-width: 940px;
+  margin: 0 auto;
+  padding: 10px clamp(16px, 4vw, 32px) 60px;
+}
+
+.mod-head { margin: 6px 0 20px; }
+.mod-head h1 { margin: 0 0 6px; font-size: clamp(22px, 3.4vw, 30px); font-weight: 400; }
+
+.mod-filters { display: flex; gap: 9px; flex-wrap: wrap; margin-bottom: 22px; }
+
+.chip {
+  font: inherit;
+  font-size: 13px;
+  padding: 8px 16px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--muted);
+  cursor: pointer;
+  transition: all 0.25s var(--ease);
+}
+.chip:hover { color: var(--text); border-color: var(--border-strong); }
+.chip.is-active { background: var(--accent); border-color: var(--accent); color: #241a09; font-weight: 600; }
+
+/* ----------------------------- карточки -------------------------------- */
+
+.mod-list { display: flex; flex-direction: column; gap: 16px; }
+
+.mod-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 18px;
+  backdrop-filter: blur(16px);
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.35);
+  transition: border-color 0.3s;
+}
+.mod-card:hover { border-color: var(--border-strong); }
+.mod-card.is-published { border-left: 3px solid var(--accent-2); }
+
+.mod-card-main { display: flex; gap: 16px; align-items: flex-start; }
+
+.mod-thumb {
+  position: relative;
+  flex: 0 0 132px;
+  width: 132px;
+  height: 96px;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border);
+  display: grid;
+  place-items: center;
+}
+.mod-thumb img { width: 100%; height: 100%; object-fit: cover; display: none; }
+.mod-thumb.has-photo img { display: block; }
+.mod-thumb.has-photo .mod-nophoto { display: none; }
+.mod-nophoto { font-size: 11px; color: var(--muted); }
+
+.mod-info { flex: 1; min-width: 0; }
+.mod-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 9px; }
+
+.badge {
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid;
+}
+.badge.pending { color: #f0c479; border-color: rgba(232, 178, 95, 0.4); background: rgba(232, 178, 95, 0.1); }
+.badge.published { color: #7ad1c4; border-color: rgba(122, 209, 196, 0.4); background: rgba(122, 209, 196, 0.1); }
+
+.mod-text {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: #dedde3;
+}
+
+.mod-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-top: 16px;
+  padding-top: 15px;
+  border-top: 1px solid var(--border);
+}
+
+/* Переключатель «Опубликовано» */
+.switch { display: inline-flex; align-items: center; gap: 11px; cursor: pointer; user-select: none; }
+.switch input { position: absolute; opacity: 0; width: 0; height: 0; }
+.switch-track {
+  width: 46px;
+  height: 26px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid var(--border-strong);
+  position: relative;
+  transition: background 0.3s var(--ease), border-color 0.3s;
+  flex: 0 0 auto;
+}
+.switch-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #c9c8d0;
+  transition: transform 0.3s var(--ease), background 0.3s;
+}
+.switch input:checked + .switch-track { background: rgba(122, 209, 196, 0.28); border-color: rgba(122, 209, 196, 0.6); }
+.switch input:checked + .switch-track .switch-thumb { transform: translateX(20px); background: var(--accent-2); }
+.switch input:focus-visible + .switch-track { box-shadow: 0 0 0 3px rgba(122, 209, 196, 0.25); }
+.switch-label { font-size: 13.5px; color: var(--text); }
+
+/* Форма редактирования */
+.mod-edit { margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--border); }
+.mod-edit[hidden] { display: none; }
+.edit-label { display: block; font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); margin-bottom: 4px; }
+
+.mod-empty { text-align: center; padding: 50px 0; }
+
+@media (max-width: 640px) {
+  .mod-card-main { flex-direction: column; }
+  .mod-thumb { width: 100%; flex-basis: auto; height: 170px; }
+  .mod-actions { flex-direction: column; align-items: stretch; }
+  .edit-btn { width: 100%; }
+}

@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="noindex, nofollow" />
+  <meta name="theme-color" content="#0a0a0c" />
+  <title>НЕФТЬ · Модерация историй</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='9' fill='%230a0a0c'/><text x='16' y='23' font-size='19' font-family='Arial,Helvetica,sans-serif' font-weight='bold' text-anchor='middle' fill='%237ad1c4'>M</text></svg>" />
+  <link rel="stylesheet" href="/assets/styles.css" />
+  <link rel="stylesheet" href="/assets/moderation.css" />
+</head>
+<body class="moderation-page">
+  <div class="vignette" aria-hidden="true"></div>
+
+  <header class="site-header">
+    <div class="brand">
+      <span class="brand-mark">НЕФТЬ</span>
+      <span class="brand-sub">панель модерации</span>
+    </div>
+    <button class="btn btn-ghost" id="refresh-btn">Обновить</button>
+  </header>
+
+  <main class="mod-stage">
+    <div class="mod-head">
+      <h1>Истории гостей</h1>
+      <p class="muted" id="mod-summary">Загрузка…</p>
+    </div>
+
+    <div class="mod-filters" role="group" aria-label="Фильтр историй">
+      <button class="chip is-active" data-filter="all">Все</button>
+      <button class="chip" data-filter="pending">На модерации</button>
+      <button class="chip" data-filter="published">Опубликованные</button>
+    </div>
+
+    <p class="form-error" id="mod-error" hidden></p>
+
+    <div class="mod-list" id="mod-list"></div>
+
+    <p class="mod-empty muted" id="mod-empty" hidden>Историй пока нет.</p>
+  </main>
+
+  <!-- Шаблон карточки модерации -->
+  <template id="mod-card-template">
+    <article class="mod-card">
+      <div class="mod-card-main">
+        <div class="mod-thumb">
+          <img alt="" />
+          <span class="mod-nophoto">без фото</span>
+        </div>
+        <div class="mod-info">
+          <div class="mod-row">
+            <span class="badge"></span>
+            <span class="muted small mod-date"></span>
+          </div>
+          <p class="mod-text"></p>
+        </div>
+      </div>
+
+      <div class="mod-actions">
+        <label class="switch">
+          <input type="checkbox" class="publish-toggle" />
+          <span class="switch-track"><span class="switch-thumb"></span></span>
+          <span class="switch-label">Опубликовано</span>
+        </label>
+        <button class="btn btn-ghost btn-sm edit-btn" type="button">Редактировать</button>
+      </div>
+
+      <form class="mod-edit" hidden>
+        <label class="edit-label" for="">Текст истории</label>
+        <textarea class="edit-text story-input" maxlength="600" rows="6"></textarea>
+        <div class="meter">
+          <div class="meter-track"><span class="meter-fill"></span></div>
+          <div class="meter-label"><span class="edit-counter">0 / 600</span><span class="muted">символов</span></div>
+        </div>
+
+        <div class="photo-row">
+          <label class="btn btn-ghost photo-pick">
+            Заменить фото
+            <input type="file" class="edit-photo" accept="image/png,image/jpeg,image/webp,image/gif" hidden />
+          </label>
+          <button class="btn btn-ghost btn-sm remove-photo-btn" type="button">Удалить фото</button>
+          <span class="muted small edit-photo-name">Фото не выбрано</span>
+        </div>
+
+        <p class="form-error edit-error" hidden></p>
+
+        <div class="modal-actions">
+          <button class="btn btn-ghost cancel-btn" type="button">Отмена</button>
+          <button class="btn btn-primary save-btn" type="submit">Сохранить</button>
+        </div>
+      </form>
+    </article>
+  </template>
+
+  <script src="/assets/moderation.js"></script>
+</body>
+</html>
