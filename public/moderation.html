@@ -50,6 +50,7 @@
         </div>
         <div class="mod-info">
           <div class="mod-row">
+            <span class="mod-name"></span>
             <span class="badge"></span>
             <span class="muted small mod-date"></span>
           </div>
@@ -67,6 +68,9 @@
       </div>
 
       <form class="mod-edit" hidden>
+        <label class="edit-label" for="">Имя гостя</label>
+        <input type="text" class="edit-name name-input" maxlength="40" placeholder="Имя" />
+
         <label class="edit-label" for="">Текст истории</label>
         <textarea class="edit-text story-input" maxlength="600" rows="6"></textarea>
         <div class="meter">

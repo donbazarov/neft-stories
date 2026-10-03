@@ -25,10 +25,10 @@
   <main class="stage">
     <section class="hero">
       <p class="eyebrow">Истории гостей</p>
-      <h1 class="hero-title">Моменты, которые остались<br />на дне чашки</h1>
+      <h1 class="hero-title">Время, проведённое здесь</h1>
       <p class="hero-lead">
-        Каждая история здесь — от настоящего гостя кофейни НЕФТЬ.
-        Листайте, читайте и однажды расскажите свою.
+        Каждая история на этой странице — от наших любимых гостей.
+        Листайте, читайте и расскажите свою.
       </p>
     </section>
 
@@ -57,14 +57,14 @@
 
     <div class="cta">
       <button class="btn btn-primary btn-lg" id="share-btn">Поделиться своей историей</button>
-      <p class="cta-note">До 600 символов и одна фотография. История появится после проверки.</p>
+      <p class="cta-note" id="cta-note">До 600 символов и одна фотография. История появится после проверки.</p>
     </div>
   </main>
 
   <footer class="site-footer">
-    <span>© <span id="year"></span> Кофейня НЕФТЬ</span>
+    <span>© <span id="year"></span> НЕФТЬ Coffee Shop</span>
     <span class="dot">•</span>
-    <span>Истории проходят модерацию</span>
+    <span class="footer-note">Истории проходят модерацию</span>
   </footer>
 
   <!-- Модальное окно: редактор истории -->
@@ -75,8 +75,18 @@
 
       <div class="modal-body" id="editor-view">
         <h2 id="editor-title">Расскажите свою историю</h2>
-        <p class="muted small">Мы проверим её и опубликуем в общей карусели.</p>
+        <p class="muted small" id="editor-subtitle">Мы проверим её и опубликуем в общей карусели.</p>
 
+        <label class="field-label" for="guest-name">Как вас зовут</label>
+        <input
+          type="text"
+          id="guest-name"
+          class="name-input"
+          maxlength="40"
+          autocomplete="name"
+          placeholder="Имя" />
+
+        <label class="field-label" for="story-text">Ваша история</label>
         <textarea
           id="story-text"
           class="story-input"
@@ -114,11 +124,11 @@
         <div class="thanks-badge" aria-hidden="true">
           <svg viewBox="0 0 24 24"><path d="M20 12a2 2 0 0 0 0-4V6H4v2a2 2 0 0 0 0 4v2a2 2 0 0 0 0 4h16v-2a2 2 0 0 0 0-4z"/></svg>
         </div>
-        <h2>Спасибо! История отправлена</h2>
-        <p class="thanks-text">
+        <h2 id="thanks-title">Спасибо! История отправлена</h2>
+        <p class="thanks-text" id="thanks-text">
           Ты можешь получить купон на бесплатный напиток при показе этого экрана бариста.
         </p>
-        <p class="muted small">После проверки история появится в общей карусели.</p>
+        <p class="muted small" id="thanks-note">После проверки история появится в общей карусели.</p>
         <div class="modal-actions">
           <button class="btn btn-primary" id="thanks-done">Готово</button>
         </div>
@@ -128,10 +138,20 @@
 
   <template id="slide-template">
     <article class="slide">
-      <div class="slide-photo"><img alt="" loading="lazy" /></div>
+      <div class="slide-photo">
+        <img alt="" draggable="false" decoding="async" />
+      </div>
       <div class="slide-content">
         <p class="slide-text"></p>
-        <p class="slide-meta"><span class="slide-author">Гость НЕФТИ</span> · <span class="slide-date"></span></p>
+        <p class="slide-meta">
+          <span class="slide-author"></span>
+          <span class="slide-sep">·</span>
+          <span class="slide-date"></span>
+        </p>
+        <button class="btn slide-more" type="button" aria-expanded="false">
+          <span class="slide-more-label">Показать полностью</span>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+        </button>
       </div>
     </article>
   </template>

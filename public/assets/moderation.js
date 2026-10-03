@@ -81,6 +81,7 @@
     const badge = node.querySelector('.badge');
     const text = node.querySelector('.mod-text');
     const date = node.querySelector('.mod-date');
+    const nameEl = node.querySelector('.mod-name');
 
     function paintThumb(photoUrl) {
       if (photoUrl) {
@@ -102,6 +103,7 @@
 
     paintThumb(story.photo);
     paintBadge(story.published);
+    nameEl.textContent = story.name || 'Гость НЕФТИ';
     text.textContent = story.text;
     date.textContent = formatDate(story.createdAt);
 
@@ -129,6 +131,7 @@
 
     // --- редактирование ---
     const editForm = node.querySelector('.mod-edit');
+    const editName = node.querySelector('.edit-name');
     const editText = node.querySelector('.edit-text');
     const editCounter = node.querySelector('.edit-counter');
     const meterFill = node.querySelector('.meter-fill');
@@ -161,6 +164,7 @@
         return;
       }
       // сбрасываем черновик к актуальному состоянию
+      editName.value = story.name || '';
       editText.value = story.text;
       newPhoto = '';
       removePhoto = false;
@@ -176,6 +180,7 @@
 
     node.querySelector('.cancel-btn').addEventListener('click', () => { editForm.hidden = true; });
     editText.addEventListener('input', () => { updateCounter(); setEditError(''); });
+    editName.addEventListener('input', () => setEditError(''));
 
     editPhoto.addEventListener('change', () => {
       const file = editPhoto.files && editPhoto.files[0];
@@ -205,11 +210,13 @@
     editForm.addEventListener('submit', async (event) => {
       event.preventDefault();
 
+      const name = editName.value.trim();
       const value = editText.value.trim();
+      if (!name) return setEditError('Укажите имя');
       if (!value) return setEditError('История не может быть пустой');
       if (editText.value.length > MAX_CHARS) return setEditError(`Максимум ${MAX_CHARS} символов`);
 
-      const payload = { text: value };
+      const payload = { name, text: value };
       if (newPhoto) payload.photo = newPhoto;          // заменить
       else if (removePhoto) payload.photo = null;      // удалить
 

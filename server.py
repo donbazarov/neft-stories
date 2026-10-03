@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import hashlib
 import json
 import mimetypes
 import os
@@ -27,6 +28,7 @@ import sys
 import threading
 import uuid
 from datetime import datetime, timezone
+from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
@@ -45,6 +47,7 @@ UPLOADS_DIR = DATA_DIR / "uploads"
 DB_FILE = DATA_DIR / "db.json"
 
 MAX_TEXT_LENGTH = 600                        # лимит символов в истории
+MAX_NAME_LENGTH = 40                         # лимит символов в имени гостя
 MAX_PHOTO_BYTES = 5 * 1024 * 1024            # максимальный размер фото (5 МБ)
 ALLOWED_PHOTO_TYPES = {
     "image/jpeg": ".jpg",
@@ -52,6 +55,14 @@ ALLOWED_PHOTO_TYPES = {
     "image/webp": ".webp",
     "image/gif": ".gif",
 }
+
+DEFAULT_AUTHOR = "Гость НЕФТИ"               # подпись, если имя не указано
+
+# Кука «памяти гостя»: по ней узнаём устройство и не даём отправить
+# несколько историй с одного телефона/компьютера. Только httpOnly —
+# в JavaScript она недоступна.
+GUEST_COOKIE = "neft_guest"
+GUEST_COOKIE_MAX_AGE = 2 * 365 * 24 * 60 * 60   # 2 года
 
 DATA_URL_RE = re.compile(r"^data:(?P<mime>[\w.+-]+/[\w.+-]+);base64,(?P<data>[A-Za-z0-9+/=\s]+)$")
 
@@ -122,6 +133,7 @@ def public_story(story: dict) -> dict:
     """История в том виде, в котором её видит посетитель сайта."""
     return {
         "id": story["id"],
+        "name": story.get("name") or DEFAULT_AUTHOR,
         "text": story["text"],
         "photo": story.get("photo"),
         "createdAt": story["createdAt"],
@@ -132,11 +144,24 @@ def moderation_story(story: dict) -> dict:
     """Полная история для страницы модерации."""
     return {
         "id": story["id"],
+        "name": story.get("name") or DEFAULT_AUTHOR,
         "text": story["text"],
         "photo": story.get("photo"),
         "published": bool(story.get("published")),
         "createdAt": story["createdAt"],
         "updatedAt": story.get("updatedAt") or story["createdAt"],
+    }
+
+
+def my_story(story: dict) -> dict:
+    """История для её автора — он может её отредактировать."""
+    return {
+        "id": story["id"],
+        "name": story.get("name") or DEFAULT_AUTHOR,
+        "text": story["text"],
+        "photo": story.get("photo"),
+        "published": bool(story.get("published")),
+        "createdAt": story["createdAt"],
     }
 
 
@@ -150,6 +175,23 @@ def validate_text(raw: object) -> tuple[str | None, str | None]:
     if len(text) > MAX_TEXT_LENGTH:
         return None, f"Слишком длинная история: максимум {MAX_TEXT_LENGTH} символов"
     return text, None
+
+
+def validate_name(raw: object) -> tuple[str | None, str | None]:
+    """Возвращает (имя, ошибка)."""
+    if not isinstance(raw, str):
+        return None, "Укажите имя"
+    name = " ".join(raw.split())          # убираем лишние пробелы и переводы строк
+    if not name:
+        return None, "Укажите имя"
+    if len(name) > MAX_NAME_LENGTH:
+        return None, f"Имя слишком длинное: максимум {MAX_NAME_LENGTH} символов"
+    return name, None
+
+
+def guest_hash(token: str) -> str:
+    """Храним хеш токена, а не сам токен: утечка db.json не даст доступ к чужим историям."""
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
 def save_photo(data_url: object) -> tuple[str | None, str | None]:
@@ -211,18 +253,26 @@ class NeftHandler(BaseHTTPRequestHandler):
 
     # ---------------------------- утилиты ответа --------------------------- #
 
-    def _send(self, status: int, body: bytes, content_type: str = "application/octet-stream") -> None:
+    def _send(
+        self,
+        status: int,
+        body: bytes,
+        content_type: str = "application/octet-stream",
+        cookies: list[str] | None = None,
+    ) -> None:
         self.send_response(status)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
+        for cookie in cookies or []:
+            self.send_header("Set-Cookie", cookie)
         self.end_headers()
         if self.command != "HEAD":
             self.wfile.write(body)
 
-    def send_json(self, status: int, payload: object) -> None:
+    def send_json(self, status: int, payload: object, cookies: list[str] | None = None) -> None:
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-        self._send(status, body, "application/json; charset=utf-8")
+        self._send(status, body, "application/json; charset=utf-8", cookies)
 
     def send_error_json(self, status: int, message: str) -> None:
         self.send_json(status, {"error": message})
@@ -299,6 +349,39 @@ class NeftHandler(BaseHTTPRequestHandler):
             # Намеренно отдаём 404, чтобы скрытая страница не «светилась».
             raise ApiError(404, "Страница не найдена")
 
+    # --------------------------- память гостя ------------------------------ #
+
+    def guest_token(self) -> str:
+        """Токен гостя из httpOnly-куки (пустая строка, если куки нет)."""
+        jar = SimpleCookie()
+        try:
+            jar.load(self.headers.get("Cookie") or "")
+        except Exception:
+            return ""
+        morsel = jar.get(GUEST_COOKIE)
+        return morsel.value if morsel else ""
+
+    def guest_cookie(self, token: str) -> str:
+        """Готовит Set-Cookie. Secure добавляем, когда сайт отдаётся по HTTPS."""
+        parts = [
+            f"{GUEST_COOKIE}={token}",
+            "Path=/",
+            f"Max-Age={GUEST_COOKIE_MAX_AGE}",
+            "HttpOnly",               # из JavaScript кука недоступна
+            "SameSite=Lax",
+        ]
+        if self.headers.get("X-Forwarded-Proto", "").lower() == "https":
+            parts.append("Secure")
+        return "; ".join(parts)
+
+    def find_guest_story(self, db: dict) -> dict | None:
+        """История, отправленная с этого устройства (если уже была)."""
+        token = self.guest_token()
+        if not token:
+            return None
+        hashed = guest_hash(token)
+        return next((s for s in db["stories"] if s.get("guestHash") == hashed), None)
+
     def do_GET(self) -> None:
         self._dispatch("GET")
 
@@ -335,6 +418,10 @@ class NeftHandler(BaseHTTPRequestHandler):
             return self._api_public_stories
         if path == "/api/stories" and method == "POST":
             return self._api_create_story
+        if path == "/api/me" and method == "GET":
+            return self._api_me
+        if path == "/api/stories/mine" and method == "PATCH":
+            return self._api_update_my_story
         if path == "/api/moderation/stories" and method == "GET":
             return self._api_moderation_list
         match = re.fullmatch(r"/api/moderation/stories/([A-Za-z0-9_-]+)", path)
@@ -369,6 +456,10 @@ class NeftHandler(BaseHTTPRequestHandler):
         """Приём новой истории. Публикуется только после модерации."""
         body = self.read_json_body()
 
+        name, error = validate_name(body.get("name"))
+        if error:
+            raise ApiError(400, error)
+
         text, error = validate_text(body.get("text"))
         if error:
             raise ApiError(400, error)
@@ -377,19 +468,83 @@ class NeftHandler(BaseHTTPRequestHandler):
         if error:
             raise ApiError(400, error)
 
+        db = load_db()
+
+        # Одно устройство — одна история: вторую не принимаем,
+        # вместо этого предлагаем отредактировать уже отправленную.
+        if self.find_guest_story(db) is not None:
+            raise ApiError(409, "С этого устройства история уже отправлена — можно её изменить")
+
+        token = self.guest_token() or secrets.token_urlsafe(24)
         story = {
             "id": uuid.uuid4().hex,
+            "name": name,
             "text": text,
             "photo": photo,
             "published": False,          # всегда на модерацию
+            "guestHash": guest_hash(token),
             "createdAt": _now_iso(),
             "updatedAt": None,
         }
 
-        db = load_db()
         db["stories"].insert(0, story)
         save_db(db)
-        self.send_json(201, {"ok": True, "id": story["id"]})
+
+        # Запоминаем гостя, чтобы он мог вернуться и отредактировать историю.
+        cookies = [self.guest_cookie(token)] if not self.guest_token() else None
+        self.send_json(201, {"ok": True, "id": story["id"]}, cookies)
+
+    def _api_me(self, _path: str) -> None:
+        """Отдаёт историю текущего гостя, чтобы предложить её изменить."""
+        db = load_db()
+        story = self.find_guest_story(db)
+        self.send_json(200, {
+            "hasStory": story is not None,
+            "story": my_story(story) if story else None,
+        })
+
+    def _api_update_my_story(self, _path: str) -> None:
+        """Правка своей истории. После изменения она снова уходит на модерацию."""
+        body = self.read_json_body()
+
+        db = load_db()
+        story = self.find_guest_story(db)
+        if story is None:
+            raise ApiError(404, "История не найдена — возможно, устройство не сохранено")
+
+        if "name" in body:
+            name, error = validate_name(body.get("name"))
+            if error:
+                raise ApiError(400, error)
+            story["name"] = name
+
+        if "text" in body:
+            text, error = validate_text(body.get("text"))
+            if error:
+                raise ApiError(400, error)
+            story["text"] = text
+
+        if "photo" in body:
+            # photo = null  -> удалить фото
+            # photo = ""    -> не менять
+            # photo = data: -> заменить
+            new_photo = body.get("photo")
+            if new_photo is None:
+                delete_photo(story.get("photo"))
+                story["photo"] = None
+            elif new_photo != "":
+                saved, error = save_photo(new_photo)
+                if error:
+                    raise ApiError(400, error)
+                delete_photo(story.get("photo"))
+                story["photo"] = saved
+
+        # Отредактированная история проходит модерацию заново.
+        story["published"] = False
+        story["updatedAt"] = _now_iso()
+        save_db(db)
+
+        self.send_json(200, {"ok": True, "story": my_story(story)})
 
     # ----------------------------- API модерации --------------------------- #
 
@@ -407,6 +562,12 @@ class NeftHandler(BaseHTTPRequestHandler):
         story = next((s for s in db["stories"] if s["id"] == story_id), None)
         if story is None:
             raise ApiError(404, "История не найдена")
+
+        if "name" in body:
+            name, error = validate_name(body.get("name"))
+            if error:
+                raise ApiError(400, error)
+            story["name"] = name
 
         if "text" in body:
             text, error = validate_text(body.get("text"))

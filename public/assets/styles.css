@@ -185,11 +185,14 @@ body {
 
 .carousel { width: 100%; max-width: 780px; margin: 0 auto; }
 
+/* Высота подстраивается под активную историю — её выставляет app.js,
+   поэтому ни текст, ни фото не обрезаются. min-height — только страховка
+   на время загрузки, чтобы блок не схлопывался в ноль. */
 .carousel-viewport {
   position: relative;
   width: 100%;
-  min-height: 430px;
-  border-radius: var(--radius);
+  min-height: 120px;
+  transition: height 0.45s var(--ease);
   perspective: 1400px;
 }
 
@@ -198,8 +201,8 @@ body {
 .slide {
   position: absolute;
   inset: 0;
-  display: grid;
-  grid-template-rows: minmax(0, 1fr) auto;
+  display: flex;
+  flex-direction: column;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -211,13 +214,25 @@ body {
   transform: translateX(6%) scale(0.94);
   transition: opacity 0.7s var(--ease), transform 0.7s var(--ease), visibility 0.7s;
   will-change: opacity, transform;
+
+  /* Историю нельзя выделять: на телефоне долгое нажатие останавливает
+     слайдшоу, но не должно выделять текст и звать контекстное меню. */
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
 }
 
 .slide.is-active { opacity: 1; visibility: visible; transform: translateX(0) scale(1); }
 .slide.is-prev { transform: translateX(-6%) scale(0.94); }
 .slide.is-next { transform: translateX(6%) scale(0.94); }
 
-.slide-photo { position: relative; min-height: 190px; overflow: hidden; background: #101014; }
+.slide-photo {
+  position: relative;
+  flex: 0 0 auto;
+  height: 250px;
+  overflow: hidden;
+  background: #101014;
+}
 .slide-photo::after {
   content: "";
   position: absolute;
@@ -228,11 +243,28 @@ body {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  object-position: center;
   display: block;
   transform: scale(1.02);
   animation: kenburns 18s ease-in-out infinite alternate;
+  -webkit-user-drag: none;
+  pointer-events: none;      /* правый клик и «сохранить картинку» по фото не срабатывают */
 }
 .slide.no-photo .slide-photo { display: none; }
+
+/* Раскрытая история: фото видно целиком, без обрезки по краям.
+   Точную высоту блока считает app.js по пропорциям снимка, а min-height
+   не даёт блоку схлопнуться, пока фото ещё грузится. */
+.slide.is-expanded .slide-photo {
+  height: auto;
+  min-height: 250px;
+  max-height: 70vh;
+  background: #0d0d11;
+}
+.slide.is-expanded .slide-photo img {
+  object-fit: contain;
+  animation: none;
+}
 
 @keyframes kenburns {
   from { transform: scale(1.02) translateY(0); }
@@ -240,11 +272,11 @@ body {
 }
 
 .slide-content {
+  flex: 0 0 auto;
   padding: 26px clamp(20px, 4vw, 40px) 30px;
   display: flex;
   flex-direction: column;
   gap: 14px;
-  justify-content: center;
 }
 
 .slide-text {
@@ -256,8 +288,30 @@ body {
   overflow-wrap: anywhere;
 }
 
+/* Свёрнутый длинный текст: несколько строк + кнопка «Показать полностью».
+   Число строк задаёт app.js через --clamp-lines (на мобильном меньше). */
+.slide.is-text-clamped:not(.is-expanded) .slide-text {
+  display: -webkit-box;
+  -webkit-line-clamp: var(--clamp-lines, 6);
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
 .slide-meta { margin: 0; font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
 .slide-author { color: var(--accent-2); }
+.slide-sep { opacity: 0.5; }
+
+.slide-more {
+  display: none;
+  align-self: flex-start;
+  padding: 8px 15px;
+  font-size: 13px;
+  border-color: var(--border-strong);
+  background: rgba(255, 255, 255, 0.04);
+}
+.slide.is-clampable .slide-more { display: inline-flex; }
+.slide-more svg { width: 16px; height: 16px; transition: transform 0.3s var(--ease); }
+.slide.is-expanded .slide-more svg { transform: rotate(180deg); }
 
 /* Управление */
 
@@ -312,10 +366,12 @@ body {
   gap: 10px;
   padding: 26px 20px 34px;
   color: var(--muted);
-  font-size: 12px;
-  letter-spacing: 0.05em;
+  font-size: 13px;
+  font-weight: 300;              /* начертание Book */
+  letter-spacing: 0.06em;
 }
 .site-footer .dot { opacity: 0.5; }
+.footer-note { font-weight: 300; }
 
 /* --------------------------- модальное окно ---------------------------- */
 
@@ -369,9 +425,32 @@ body {
 .modal-body[hidden] { display: none; }
 .modal-body h2 { margin: 0 0 8px; font-size: clamp(20px, 3vw, 25px); font-weight: 500; }
 
+.field-label {
+  display: block;
+  margin: 22px 0 7px;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.name-input {
+  width: 100%;
+  padding: 13px 16px;
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font: inherit;
+  font-size: 15px;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.name-input::placeholder { color: #6b6a73; }
+.name-input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(232, 178, 95, 0.15); }
+
 .story-input {
   width: 100%;
-  margin-top: 20px;
+  margin-top: 0;
   padding: 16px 18px;
   min-height: 160px;
   resize: vertical;
@@ -456,11 +535,13 @@ body {
   .brand-sub { font-size: 10px; }
   #header-share { display: none; }         /* на мобильном основная кнопка внизу */
   .hero { margin-bottom: 24px; }
-  .carousel-viewport { min-height: 420px; }
+  .slide-photo { height: 200px; }
+  .slide.is-expanded .slide-photo { min-height: 200px; max-height: 55vh; }
   .slide-content { padding: 22px 20px 26px; }
   .cta { margin-top: 30px; }
   .btn-lg { width: 100%; }
   .modal-actions .btn { flex: 1; }
+  .site-footer { flex-wrap: wrap; }
 }
 
 @media (prefers-reduced-motion: reduce) {

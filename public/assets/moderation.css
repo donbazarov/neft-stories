@@ -88,6 +88,13 @@ body.moderation-page {
 .badge.pending { color: #f0c479; border-color: rgba(232, 178, 95, 0.4); background: rgba(232, 178, 95, 0.1); }
 .badge.published { color: #7ad1c4; border-color: rgba(122, 209, 196, 0.4); background: rgba(122, 209, 196, 0.1); }
 
+.mod-name {
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--accent-2);
+  overflow-wrap: anywhere;
+}
+
 .mod-text {
   margin: 0;
   font-size: 15px;
@@ -139,7 +146,8 @@ body.moderation-page {
 /* Форма редактирования */
 .mod-edit { margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--border); }
 .mod-edit[hidden] { display: none; }
-.edit-label { display: block; font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); margin-bottom: 4px; }
+.edit-label { display: block; font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); margin: 16px 0 6px; }
+.mod-edit .edit-label:first-child { margin-top: 0; }
 
 .mod-empty { text-align: center; padding: 50px 0; }
 

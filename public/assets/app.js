@@ -5,10 +5,16 @@
 (() => {
   'use strict';
 
-  const API_PUBLIC = '/api/stories';
+  const API_STORIES = '/api/stories';
+  const API_ME = '/api/me';
+  const API_MINE = '/api/stories/mine';
   const MAX_CHARS = 600;
   const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
   const AUTOPLAY_MS = 7000;
+
+  const CTA_NEW = 'До 600 символов и одна фотография. История появится после проверки.';
+  const CTA_EDIT_PUBLISHED = 'Ваша история уже опубликована — её можно изменить. После правок она снова уйдёт на проверку.';
+  const CTA_EDIT_PENDING = 'Ваша история ждёт проверки — её можно изменить. После правок она снова уйдёт на проверку.';
 
   const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -175,6 +181,7 @@
       show(carousel.empty);
       hide(carousel.controls);
       hide(carousel.progress);
+      carousel.viewport.style.height = '';
       return;
     }
 
@@ -186,16 +193,21 @@
       const node = carousel.template.content.firstElementChild.cloneNode(true);
       node.dataset.index = String(i);
 
-      const text = node.querySelector('.slide-text');
-      text.textContent = story.text;
-
-      const date = node.querySelector('.slide-date');
-      date.textContent = formatDate(story.createdAt);
+      const name = story.name || 'Гость НЕФТИ';
+      node.querySelector('.slide-text').textContent = story.text;
+      node.querySelector('.slide-author').textContent = name;
+      node.querySelector('.slide-date').textContent = formatDate(story.createdAt);
 
       if (story.photo) {
         const img = node.querySelector('.slide-photo img');
         img.src = story.photo;
-        img.alt = 'Фотография из истории гостя НЕФТИ';
+        img.alt = `Фотография из истории гостя по имени ${name}`;
+        // Пропорции снимка известны только после загрузки — тогда и решаем,
+        // обрезано ли фото и нужна ли кнопка «Показать полностью».
+        img.addEventListener('load', () => {
+          applyExpandedPhotoHeight(node);
+          if (carousel.track.children[carousel.index] === node) syncViewportHeight();
+        });
       } else {
         node.classList.add('no-photo');
       }
@@ -216,6 +228,100 @@
     scheduleAutoplay();
   }
 
+  /** Высота карточки: фото + текст + рамка.
+      offsetHeight не зависит от transform, поэтому мерить можно безопасно. */
+  function measureSlideHeight(slide) {
+    const photo = slide.querySelector('.slide-photo');
+    const content = slide.querySelector('.slide-content');
+    const photoHeight = photo && getComputedStyle(photo).display !== 'none' ? photo.offsetHeight : 0;
+    return photoHeight + content.offsetHeight + 2;
+  }
+
+  /** Подгоняем высоту карусели под активную карточку, чтобы ничего не обрезалось. */
+  function syncViewportHeight() {
+    if (!carousel.track.children.length) return;
+
+    // Меряем сразу (чтение offsetHeight само вызывает reflow), не полагаясь
+    // на requestAnimationFrame — он не срабатывает в фоновой вкладке.
+    const apply = () => {
+      const current = carousel.track.children[carousel.index];
+      if (!current) return;
+      carousel.viewport.style.height = measureSlideHeight(current) + 'px';
+    };
+
+    apply();
+    requestAnimationFrame(apply);   // и ещё раз после перерисовки/догрузки
+  }
+
+  /** Сколько строк текста показываем в свёрнутой карточке. */
+  function clampLines() {
+    return window.innerWidth <= 640 ? 5 : 6;
+  }
+
+  /** Нужна ли кнопка «Показать полностью»: длинный текст или приложенное фото. */
+  function refreshClampState(slide) {
+    if (slide.classList.contains('is-expanded')) return;   // в раскрытом виде мерить нечего
+
+    // Число строк держим в CSS-переменной, чтобы JS и стили не расходились.
+    const lines = clampLines();
+    slide.style.setProperty('--clamp-lines', String(lines));
+
+    const text = slide.querySelector('.slide-text');
+    const lineHeight = parseFloat(getComputedStyle(text).lineHeight) || 24;
+
+    // Естественную высоту меряем без климпа: снимаем класс и возвращаем обратно
+    // в том же кадре, поэтому мигания не видно.
+    const wasClamped = slide.classList.contains('is-text-clamped');
+    slide.classList.remove('is-text-clamped');
+    const naturalHeight = text.scrollHeight;
+    if (wasClamped) slide.classList.add('is-text-clamped');
+
+    const textOverflows = naturalHeight > lineHeight * lines + 2;
+    const hasPhoto = !slide.classList.contains('no-photo');
+
+    // Текст сворачиваем сразу, не дожидаясь загрузки фотографии.
+    slide.classList.toggle('is-text-clamped', textOverflows);
+    // Кнопка нужна и при длинном тексте, и при фото: object-fit: cover
+    // всё равно обрезает снимок по краям карточки.
+    slide.classList.toggle('is-clampable', textOverflows || hasPhoto);
+  }
+
+  function refreshAll() {
+    for (const slide of carousel.track.children) refreshClampState(slide);
+    syncViewportHeight();
+  }
+
+  /** В раскрытом виде высота фото идёт по пропорциям снимка, без обрезки. */
+  function applyExpandedPhotoHeight(slide) {
+    const photo = slide.querySelector('.slide-photo');
+    const img = photo && photo.querySelector('img');
+    if (!photo || !img || slide.classList.contains('no-photo')) return;
+
+    // Свёрнутое состояние — высота берётся из CSS.
+    if (!slide.classList.contains('is-expanded') || !img.naturalWidth || !photo.clientWidth) {
+      photo.style.height = '';
+      return;
+    }
+
+    const limit = window.innerHeight * (window.innerWidth <= 640 ? 0.55 : 0.7);
+    const natural = photo.clientWidth * (img.naturalHeight / img.naturalWidth);
+    photo.style.height = Math.round(Math.min(limit, natural)) + 'px';
+  }
+
+  function setSlideExpanded(slide, expanded) {
+    slide.classList.toggle('is-expanded', expanded);
+    applyExpandedPhotoHeight(slide);
+    const button = slide.querySelector('.slide-more');
+    if (button) {
+      button.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+      button.querySelector('.slide-more-label').textContent = expanded ? 'Свернуть' : 'Показать полностью';
+    }
+  }
+
+  function collapseAll() {
+    for (const slide of carousel.track.children) setSlideExpanded(slide, false);
+  }
+
   function updateSlides() {
     const slides = carousel.track.children;
     for (let i = 0; i < slides.length; i++) {
@@ -229,20 +335,20 @@
       dot.classList.toggle('is-active', i === carousel.index);
       dot.setAttribute('aria-selected', i === carousel.index ? 'true' : 'false');
     });
+
+    const active = slides[carousel.index];
+    if (active) refreshClampState(active);
+    syncViewportHeight();
   }
 
   function goTo(index, manual = false) {
     const total = carousel.stories.length;
     if (!total) return;
     carousel.index = (index + total) % total;
+    collapseAll();                       // открываем каждую историю свёрнутой
     updateSlides();
     restartProgress();
     if (manual) scheduleAutoplay();
-
-    if (carousel.stories[carousel.index].photo) {
-      const img = carousel.track.children[carousel.index].querySelector('img');
-      if (img && !img.complete) img.decode?.().catch(() => {});
-    }
   }
 
   function next() { goTo(carousel.index + 1); }
@@ -299,6 +405,10 @@
     else scheduleAutoplay();
     touchStartX = null;
   }, { passive: true });
+  carousel.viewport.addEventListener('touchcancel', () => {
+    touchStartX = null;
+    scheduleAutoplay();
+  }, { passive: true });
 
   // Стрелки клавиатуры
   document.addEventListener('keydown', (e) => {
@@ -306,6 +416,28 @@
     if (e.key === 'ArrowRight') goTo(carousel.index + 1, true);
     if (e.key === 'ArrowLeft') goTo(carousel.index - 1, true);
   });
+
+  // Раскрытие карточки: текст целиком и фото без обрезки
+  carousel.track.addEventListener('click', (event) => {
+    const button = event.target.closest('.slide-more');
+    if (!button) return;
+    const slide = button.closest('.slide');
+    const expanded = !slide.classList.contains('is-expanded');
+    setSlideExpanded(slide, expanded);
+    if (expanded) pauseAutoplay();     // пока гость читает, слайдшоу стоит
+    else scheduleAutoplay();
+    syncViewportHeight();
+  });
+
+  // Истории не выделяются и не отдают контекстное меню, поэтому долгое
+  // нажатие на телефоне только останавливает слайдшоу.
+  carousel.viewport.addEventListener('contextmenu', (event) => event.preventDefault());
+  carousel.viewport.addEventListener('selectstart', (event) => event.preventDefault());
+  carousel.viewport.addEventListener('dragstart', (event) => event.preventDefault());
+
+  // Пересчёт высоты при повороте экрана и после загрузки шрифтов
+  window.addEventListener('resize', refreshAll);
+  document.fonts?.ready.then(refreshAll).catch(() => {});
 
   /* =====================================================================
      4. Редактор истории
@@ -325,8 +457,40 @@
   const formError = document.getElementById('form-error');
   const submitBtn = document.getElementById('submit-btn');
 
-  let photoDataUrl = null;
+  const nameInput = document.getElementById('guest-name');
+  const editorTitle = document.getElementById('editor-title');
+  const editorSubtitle = document.getElementById('editor-subtitle');
+  const thanksTitle = document.getElementById('thanks-title');
+  const thanksText = document.getElementById('thanks-text');
+  const thanksNote = document.getElementById('thanks-note');
+  const shareBtn = document.getElementById('share-btn');
+  const headerShare = document.getElementById('header-share');
+  const ctaNote = document.getElementById('cta-note');
+
+  // История, уже отправленная с этого устройства. Сервер узнаёт устройство
+  // по httpOnly-куке, поэтому в JS её значение недоступно — только факт.
+  let guest = { hasStory: false, story: null };
+
+  let photoDataUrl = null;      // новое фото в виде data-URL
+  let photoRemoved = false;     // гость убрал уже приложенное фото
+  let hasExistingPhoto = false; // у истории на сервере уже есть фото
   let lastFocused = null;
+
+  function isEditMode() { return guest.hasStory; }
+
+  function updateCta() {
+    const edit = isEditMode();
+    shareBtn.textContent = edit ? 'Изменить мою историю' : 'Поделиться своей историей';
+    headerShare.textContent = edit ? 'Изменить' : 'Поделиться';
+
+    if (!edit) {
+      ctaNote.textContent = CTA_NEW;
+      return;
+    }
+    // Показываем гостю, что сейчас происходит с его историей.
+    const published = Boolean(guest.story && guest.story.published);
+    ctaNote.textContent = published ? CTA_EDIT_PUBLISHED : CTA_EDIT_PENDING;
+  }
 
   function updateMeter() {
     const length = textarea.value.length;
@@ -341,27 +505,48 @@
   function setError(message) { formError.textContent = message; show(formError); }
 
   function resetForm() {
-    textarea.value = '';
+    const edit = isEditMode();
+    const story = guest.story;
+
+    editorTitle.textContent = edit ? 'Изменить мою историю' : 'Расскажите свою историю';
+    editorSubtitle.textContent = edit
+      ? 'После правок история снова уйдёт на проверку.'
+      : 'Мы проверим её и опубликуем в общей карусели.';
+
+    nameInput.value = edit && story ? story.name : '';
+    textarea.value = edit && story ? story.text : '';
+    submitBtn.textContent = edit ? 'Сохранить изменения' : 'Отправить историю';
+
+    // Фото: в режиме правки показываем уже приложенное
     photoDataUrl = null;
+    photoRemoved = false;
+    hasExistingPhoto = Boolean(edit && story && story.photo);
     photoInput.value = '';
-    photoName.textContent = 'Фотография не выбрана';
-    photoPreviewImg.removeAttribute('src');
-    hide(photoPreview);
+    if (hasExistingPhoto) {
+      photoPreviewImg.src = story.photo;
+      photoPreviewImg.alt = 'Фотография из вашей истории';
+      photoName.textContent = 'Текущее фото';
+      show(photoPreview);
+    } else {
+      photoPreviewImg.removeAttribute('src');
+      photoName.textContent = 'Фотография не выбрана';
+      hide(photoPreview);
+    }
+
     clearError();
     submitBtn.disabled = false;
-    submitBtn.textContent = 'Отправить историю';
     updateMeter();
   }
 
   function openModal() {
     lastFocused = document.activeElement;
     resetForm();
-    show(editorView);
     hide(thanksView);
+    show(editorView);
     show(modal);
     document.body.style.overflow = 'hidden';
-    setTimeout(() => textarea.focus(), 60);
     pauseAutoplay();
+    setTimeout(() => (nameInput.value ? textarea : nameInput).focus(), 60);
   }
 
   function closeModal() {
@@ -385,6 +570,10 @@
     if (textarea.value.trim()) clearError();
   });
 
+  nameInput.addEventListener('input', () => {
+    if (nameInput.value.trim()) clearError();
+  });
+
   // Фото: только одно изображение
   photoInput.addEventListener('change', () => {
     const file = photoInput.files && photoInput.files[0];
@@ -404,6 +593,7 @@
     const reader = new FileReader();
     reader.onload = () => {
       photoDataUrl = reader.result;
+      photoRemoved = false;
       photoPreviewImg.src = photoDataUrl;
       photoName.textContent = file.name;
       show(photoPreview);
@@ -415,14 +605,26 @@
   document.getElementById('photo-remove').addEventListener('click', () => {
     photoDataUrl = null;
     photoInput.value = '';
-    photoName.textContent = 'Фотография не выбрана';
-    photoPreviewImg.removeAttribute('src');
     hide(photoPreview);
+    photoPreviewImg.removeAttribute('src');
+    if (hasExistingPhoto) {
+      photoRemoved = true;                 // фото удалится при сохранении
+      photoName.textContent = 'Фото будет удалено';
+    } else {
+      photoName.textContent = 'Фотография не выбрана';
+    }
   });
 
   submitBtn.addEventListener('click', async () => {
+    const edit = isEditMode();
+    const name = nameInput.value.trim();
     const text = textarea.value.trim();
 
+    if (!name) {
+      setError('Укажите имя');
+      nameInput.focus();
+      return;
+    }
     if (!text) {
       setError('История не может быть пустой');
       textarea.focus();
@@ -433,21 +635,44 @@
       return;
     }
 
+    const payload = { name, text };
+    if (edit) {
+      // "" — оставить текущее фото, null — удалить, data-URL — заменить
+      payload.photo = photoDataUrl ? photoDataUrl : (photoRemoved ? null : '');
+    } else {
+      payload.photo = photoDataUrl;
+    }
+
     submitBtn.disabled = true;
-    submitBtn.textContent = 'Отправляем…';
+    submitBtn.textContent = edit ? 'Сохраняем…' : 'Отправляем…';
     clearError();
 
     try {
-      await api(API_PUBLIC, {
-        method: 'POST',
-        body: JSON.stringify({ text, photo: photoDataUrl }),
+      await api(edit ? API_MINE : API_STORIES, {
+        method: edit ? 'PATCH' : 'POST',
+        body: JSON.stringify(payload),
       });
+
+      await loadGuest();               // сервер уже помнит устройство
+      updateCta();
+
+      if (edit) {
+        thanksTitle.textContent = 'Изменения сохранены';
+        thanksText.textContent = 'История снова ушла на проверку. После публикации она появится в карусели обновлённой.';
+        thanksNote.textContent = 'Спасибо, что дополнили свою историю.';
+      } else {
+        // Купон показываем только при первой отправке истории
+        thanksTitle.textContent = 'Спасибо! История отправлена';
+        thanksText.textContent = 'Ты можешь получить купон на бесплатный напиток при показе этого экрана бариста.';
+        thanksNote.textContent = 'После проверки история появится в общей карусели.';
+      }
+
       hide(editorView);
-      show(thanksView);              // экран с купоном
+      show(thanksView);
     } catch (error) {
       setError(error.message);
       submitBtn.disabled = false;
-      submitBtn.textContent = 'Отправить историю';
+      submitBtn.textContent = edit ? 'Сохранить изменения' : 'Отправить историю';
     }
   });
 
@@ -455,15 +680,31 @@
      5. Старт
      ===================================================================== */
 
-  document.getElementById('year').textContent = String(new Date().getFullYear());
-  updateMeter();
+  async function loadGuest() {
+    try {
+      const data = await api(API_ME);
+      guest = { hasStory: Boolean(data.hasStory), story: data.story || null };
+    } catch {
+      guest = { hasStory: false, story: null };
+    }
+    updateCta();
+  }
 
-  api(API_PUBLIC)
-    .then((data) => renderCarousel(data.stories || []))
-    .catch(() => {
+  async function loadStories() {
+    try {
+      const data = await api(API_STORIES);
+      renderCarousel(data.stories || []);
+    } catch {
       show(carousel.empty);
       hide(carousel.controls);
       hide(carousel.progress);
       carousel.empty.querySelector('p').textContent = 'Не удалось загрузить истории. Обновите страницу.';
-    });
+    }
+  }
+
+  document.getElementById('year').textContent = String(new Date().getFullYear());
+  updateMeter();
+  updateCta();
+  loadGuest();
+  loadStories();
 })();
